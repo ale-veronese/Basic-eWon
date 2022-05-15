@@ -1,0 +1,336 @@
+Rem --- eWON start section: Init Section
+eWON_init_section:
+Rem --- eWON user (start)
+	Init:
+    CLS REM Clear console
+    REM ALWAYS SAVE THIS S**T, eWon might save a blank new file on top of it if power cycled
+    REM Initialize values to 0 and flags to 1.
+    
+    REM CounterKey
+    counterFlag% = 1
+    counterKey% = 0
+    
+    REM CounterPiecesIn
+    countPiecesInFlag% = 1
+    countStartingPieces@ = 0
+    
+    REM CounterPiecesOut
+    countPiecesOutFlag% = 1
+    countEndingPieces@ = 0
+    
+    REM CounterPiecesFailed
+    countPiecesFailedFlag% = 1
+    S3_CountNLPieces@ = 0
+    S3_PieceFailed@ = 0
+    
+    REM Missing_Pieces
+    S1_PieceLoadedFlag% = 1
+    outOfLids@ = 0
+    outOfBoxes@ = 0
+    
+    REM for Chute Full
+    ChuteFull@ = 0
+    S3_ChuteFullFlag% = 1
+    
+    REM for Timing S1
+    S1_TimeStartFlag% = 1
+    S1_TimeEndFlag% = 1
+    S1_Time@ = 0
+    
+    REM for Timing S2
+    S2_TimeStartFlag% = 1
+    S2_TimeEndFlag% = 1
+    S2_Time@ = 0
+    
+    REM for Timing S3
+    S3_TimeStartFlag% = 1
+    S3_TimeEndFlag% = 1
+    S3_Time@ = 0
+    
+    REM for Timing S4
+    S4_TimeStartFlag% = 1
+    S4_TimeEndFlag% = 1
+    S4_Time@ = 0
+    
+    REM for Buttons
+    StartProcess@ = 0
+    StartProcessFlag% = 1
+    StopProcess@ = 0
+    ResetButton@ = 0
+    
+    REM for EMAIL
+    emailCC$ = "alessandro_veronese@icloud.com"
+    emailSubject$ = "Ewon here..."
+    emailBody$ = ""
+    
+	END
+Rem --- eWON user (end)
+End
+Rem --- eWON end section: Init Section
+Rem --- eWON start section: Cyclic Section
+eWON_cyclic_section:
+Rem --- eWON user (start)
+Main:
+  GOTO Counters
+Timing:
+  GOTO StationTiming
+Missing:
+  GOTO MissingPieces
+ResetOnCommand:
+  GOTO Reset  
+EmailControl:
+  GOTO SendEmail
+Finish:
+  GOTO ButtonControl
+END
+Rem --- eWON user (end)
+End
+Rem --- eWON end section: Cyclic Section
+Rem --- eWON start section: Counters
+Rem --- eWON user (start)
+Counters:
+CounterPiecesIn:
+  IF(NOT S1_ConveyorEnd@ AND countPiecesInFlag%) THEN
+    countStartingPieces@ = countStartingPieces@ + 1 : countPiecesInFlag% = 0
+    REM PRINT "Starting Pieces -> " ; countStartingPieces@
+  ENDIF
+  IF (S1_ConveyorEnd@ AND NOT countPiecesInFlag%) THEN
+    countPiecesInFlag% = 1
+  ENDIF
+  
+CounterPiecesOut:
+  IF(S4_EndConveyor@ AND countPiecesOutFlag%) THEN
+    countEndingPieces@ = countEndingPieces@ + 1 : countPiecesOutFlag% = 0
+    REM PRINT "Ending Pieces -> " ; countEndingPieces@
+  ENDIF
+  IF (NOT S4_EndConveyor@ AND NOT countPiecesOutFlag%) THEN
+    countPiecesOutFlag% = 1
+  ENDIF
+  
+  
+CountPiecesFailed:
+  REM Wait for fix
+  IF(S3_PieceFailed@ AND countPiecesFailedFlag%) THEN
+    S3_CountNLPieces@ = S3_CountNLPieces@ + 1 : countPiecesFailedFlag% = 0
+    REM PRINT "Failed Pieces -> " ; S3_CountNLPieces@
+  ENDIF
+  IF (NOT S3_EndConveyor@) THEN
+    countPiecesFailedFlag% = 1
+  ENDIF
+  
+  GOTO Timing
+  
+END
+Rem --- eWON user (end)
+End
+Rem --- eWON end section: Counters
+Rem --- eWON start section: Clock
+Rem --- eWON user (start)
+FUNCTION GetTime%
+A$ = Time$
+H% = Val(A$(12 To 13))
+M% = Val(A$(15 To 16))
+S% = Val(A$(18 To 19))
+$GetTime% = (H% * 3600) + (M% * 60) + S%
+ENDFN
+FUNCTION TimeDifference%($endTime%, $startTime%)
+  $TimeDifference% = $endTime% - $startTime%
+ENDFN
+Rem --- eWON user (end)
+End
+Rem --- eWON end section: Clock
+Rem --- eWON start section: Station_Timing
+Rem --- eWON user (start)
+StationTiming:
+Station1:
+IF S1_PistonExtended@ OR S1_pieceAtStart@ OR S1_pieceAtStopper@ THEN
+  IF(S1_TimeStartFlag%) THEN
+  S1_StartTime% = @GetTime% : S1_TimeStartFlag% = 0
+  ENDIF
+ENDIF
+IF(NOT S1_ConveyorEnd@ AND NOT S1_TimeStartFlag%)THEN
+  S1_TimeEndFlag% = 0
+ENDIF
+IF(S1_ConveyorEnd@ AND NOT S1_TimeEndFlag%) THEN
+  S1_EndTime% = @GetTime% :
+  S1_Time@ = @TimeDifference%(S1_EndTime%,S1_StartTime%) :
+  S1_TimeEndFlag% = 1 :
+  S1_TimeStartFlag% = 1 :
+  REM PRINT "S1 Time is " ; S1_Time@
+ENDIF
+Station2:
+IF S2_StartConveyor@ THEN
+  IF(S2_TimeStartFlag%) THEN
+    S2_StartTime% = @GetTime% : S2_TimeStartFlag% = 0
+  ENDIF
+ENDIF
+IF(NOT S2_EndConveyor@ AND NOT S2_TimeStartFlag%)THEN
+  S2_TimeEndFlag% = 0
+ENDIF
+IF(S2_EndConveyor@ AND NOT S2_TimeEndFlag%) THEN
+  S2_EndTime% = @GetTime% :
+  S2_Time@ = @TimeDifference%(S2_EndTime%,S2_StartTime%) :
+  S2_TimeEndFlag% = 1 :
+  S2_TimeStartFlag% = 1 :
+  REM PRINT "S2 Time is " ; S2_Time@
+ENDIF
+Station3:
+IF S3_StartConveyor@ THEN
+  IF(S3_TimeStartFlag%) THEN
+    S3_StartTime% = @GetTime% : S3_TimeStartFlag% = 0
+  ENDIF
+ENDIF
+IF(NOT S3_EndConveyor@ AND NOT S3_TimeStartFlag%)THEN
+  S3_TimeEndFlag% = 0
+ENDIF
+IF(S3_EndConveyor@ AND NOT S3_TimeEndFlag%) THEN
+  S3_EndTime% = @GetTime% :
+  S3_Time@ = @TimeDifference%(S3_EndTime%,S3_StartTime%) :
+  S3_TimeEndFlag% = 1 :
+  S3_TimeStartFlag% = 1 :
+  REM PRINT "S3 Time is " ; S3_Time@
+ENDIF
+Station4:
+IF S4_StartConveyor@ THEN
+  IF(S4_TimeStartFlag%) THEN
+    S4_StartTime% = @GetTime% : S4_TimeStartFlag% = 0
+  ENDIF
+ENDIF
+IF(NOT S4_EndConveyor@ AND NOT S4_TimeStartFlag%)THEN
+  S4_TimeEndFlag% = 0
+ENDIF
+IF(S4_EndConveyor@ AND NOT S4_TimeEndFlag%) THEN
+  S4_EndTime% = @GetTime% :
+  S4_Time@ = @TimeDifference%(S4_EndTime%,S4_StartTime%) :
+  S4_TimeEndFlag% = 1 :
+  S4_TimeStartFlag% = 1 :
+  REM PRINT "S4 Time is " ; S4_Time@
+ENDIF
+GOTO Missing
+END
+Rem --- eWON user (end)
+End
+Rem --- eWON end section: Station_Timing
+Rem --- eWON start section: Missing_Pieces
+Rem --- eWON user (start)
+MissingPieces:
+OutOfLids:
+IF (Out_Of_Lids@) THEN
+  outOfLids@ = 1
+ENDIF
+IF (Got_Lids@) THEN
+  outOfLids@ = 0
+ENDIF
+ChuteFull:
+IF(NOT S3_EndConveyor@ AND S3_ChuteFullFlag%) THEN
+  TSET 2, 1 : S3_ChuteFullFlag% = 0
+  ONTIMER 2, "GOTO AreWeReallyFull"
+  GOTO OutOfBoxes
+ENDIF
+
+AreWeREallyFull:
+IF(TGET 2 AND NOT S3_EndConveyor@) THEN
+  ChuteFull@ = 1 : S3_ChuteFullFlag% = 1
+ENDIF
+IF(TGET 2 AND S3_EndConveyor@) THEN
+  ChuteFull@ = 0 : S3_ChuteFullFlag% = 1 
+ENDIF
+
+OutOfBoxes:
+IF(S1_pieceLoaded@ AND S1_PieceLoadedFlag%)THEN
+  TSET 1, 1 : S1_PieceLoadedFlag% = 0 :
+  ONTIMER 1, "GOTO AreWeReallyOutOfBoxes"
+ENDIF
+IF(NOT S1_pieceLoaded@ AND S1_PieceLoadedFlag%) THEN
+  outOfBoxes@ = 0
+ENDIF
+GOTO ResetOnCommand
+END
+AreWeReallyOutOfBoxes:
+IF(TGET 1 AND S1_pieceLoaded@)THEN  REM After 2 seconds, execute this if Piece is not there...
+  outOfBoxes@ = 1 : S1_PieceLoadedFlag% = 1
+  REM PRINT "We're out of boxes"
+ENDIF
+
+IF(TGET 1 AND NOT S1_pieceLoaded@) THEN
+  outOfBoxes@ = 0 : S1_PieceLoadedFlag% = 1
+ENDIF
+END
+Rem --- eWON user (end)
+End
+Rem --- eWON end section: Missing_Pieces
+Rem --- eWON start section: Reset_On_Command
+Rem --- eWON user (start)
+Reset:
+IF ResetCountIn@ THEN
+  countStartingPieces@ = 0
+ENDIF
+IF ResetCountOut@ THEN
+  countEndingPieces@ = 0
+ENDIF
+IF ResetCountRejected@ THEN
+  S3_CountNLPieces@ = 0
+ENDIF
+IF TimerReset@ THEN
+  S1_Time@ = 0 : S2_Time@ = 0 : S3_Time@ = 0 : S4_Time@ = 0
+ENDIF
+GOTO EmailControl
+END
+Rem --- eWON user (end)
+End
+Rem --- eWON end section: Reset_On_Command
+Rem --- eWON start section: Button_Control
+Rem --- eWON user (start)
+ButtonControl:
+IF(StartProcess@ AND StartProcessFlag%)THEN
+  S1_StartProcess@ = 1 : S2_StartProcess@ = 1 : S3_StartProcess@ = 1 : S4_StartProcess@ = 1 
+ELSE
+  S1_StartProcess@ = 0 : S2_StartProcess@ = 0 : S3_StartProcess@ = 0 : S4_StartProcess@ = 0
+ENDIF
+IF(StopProcess@)THEN
+  S1_StopProcess@ = 1 : S2_StopProcess@ = 1 : S3_StopProcess@ = 1 : S4_StopProcess@ = 1
+ELSE
+  S1_StopProcess@ = 0 : S2_StopProcess@ = 0 : S3_StopProcess@ = 0 : S4_StopProcess@ = 0
+ENDIF
+IF(ResetButton@)THEN
+  S1_ResetProcess@ = 1 : S2_ResetProcess@ = 1 : S3_ResetProcess@ = 1 : S4_ResetProcess@ = 1 :
+  REM S3_CountNLPieces@ = 0 : countEndingPieces@ = 0 : countStartingPieces@ = 0 : 
+  REM S1_Time@ = 0 : S2_Time@ = 0 : S3_Time@ = 0 : S4_Time@ = 0
+ELSE
+  S1_ResetProcess@ = 0 : S2_ResetProcess@ = 0 : S3_ResetProcess@ = 0 : S4_ResetProcess@ = 0
+ENDIF
+END
+Rem --- eWON user (end)
+End
+Rem --- eWON end section: Button_Control
+Rem --- eWON start section: Email Control
+Rem --- eWON user (start)
+SendEmail:
+  emailAtt$ = ""
+  emailNL$ = CHR$ 13 + CHR$ 10 + CHR$ 13 + CHR$ 10
+  
+  IF (emailDailyReport@ AND emailFaultLog@) THEN
+    emailAtt$ = "Alarm history and Faults are attached to this email. &[$dtAH $ftH] &[$dtHL $ftH]" //Send as attachment &[]
+  ELSE
+    IF (emailDailyReport@) THEN
+      REM ONLY DAILYREPORT
+      emailAtt$ = "Alarm history is attached to this email. &[$dtAH $ftH]"
+    ENDIF
+      IF (emailFaultLog@) THEN
+      REM ONLY FAULTLOG      
+      emailAtt$ = "Fault log is attached to this email. &[$dtHL $ftH]"
+    ENDIF
+  ENDIF
+  
+  IF (emailSend@) THEN
+    emailSend@ = 0 :
+    emailBody$ = VAL("emailMessage@ + emailNL$ + emailAtt$ + emailNL$ + emailFrom@") :
+    SENDMAIL emailTo@, emailCC$, emailSubject$, emailBody$
+  ELSE 
+    emailSend@ = 0
+  ENDIF
+GOTO Finish
+END
+Rem --- eWON user (end)
+End
+Rem --- eWON end section: Email Control
